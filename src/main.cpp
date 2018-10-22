@@ -88,7 +88,7 @@ unsigned int nCoinCacheSize = 5000;
 unsigned int nBytesPerSigOp = DEFAULT_BYTES_PER_SIGOP;
 bool fAlerts = DEFAULT_ALERTS;
 
-unsigned int nStakeMinAge = 3 * 60 * 60;
+unsigned int nStakeMinAge = 1; //3 * 60 * 60;
 int64_t nReserveBalance = 0;
 
 /** Fees smaller than this (in uphr) are considered zero fee (for relaying and mining)
@@ -4227,7 +4227,10 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
 static int GetWitnessCommitmentIndex(const CBlock& block)
 {
     int commitpos = -1;
+LogPrintf("~~~~~~~~~~~~~~~5 BBB %d %s\n", (int)block.vtx[0].vout.size(), block.vtx[0].vout[0].scriptPubKey.ToString().c_str());
     for (size_t o = 0; o < block.vtx[0].vout.size(); o++) {
+if(block.vtx[0].vout[o].scriptPubKey.size() > 6) LogPrintf("~~~~~~~~~~~~~~~5 CCC %d %0x %0x %0x %0x %0x\n", (int)block.vtx[0].vout[o].scriptPubKey.size(), (int)block.vtx[0].vout[o].scriptPubKey[0], block.vtx[0].vout[o].scriptPubKey[1], block.vtx[0].vout[o].scriptPubKey[2], block.vtx[0].vout[o].scriptPubKey[3], block.vtx[0].vout[o].scriptPubKey[4], block.vtx[0].vout[o].scriptPubKey[5]);
+else LogPrintf("~~~~~~~~~~~~~~~5 DDD %d\n", (int)block.vtx[0].vout[o].scriptPubKey.size());
         if (block.vtx[0].vout[o].scriptPubKey.size() >= 38 && block.vtx[0].vout[o].scriptPubKey[0] == OP_RETURN && block.vtx[0].vout[o].scriptPubKey[1] == 0x24 && block.vtx[0].vout[o].scriptPubKey[2] == 0xaa && block.vtx[0].vout[o].scriptPubKey[3] == 0x21 && block.vtx[0].vout[o].scriptPubKey[4] == 0xa9 && block.vtx[0].vout[o].scriptPubKey[5] == 0xed) {
             commitpos = o;
         }
@@ -4365,8 +4368,10 @@ bool ContextualCheckBlock(const CBlock& block, CValidationState& state, CBlockIn
     //   {0xaa, 0x21, 0xa9, 0xed}, and the following 32 bytes are SHA256(witness root, witness nonce). In case there are
     //   multiple, the last one is used.
     bool fHaveWitness = false;
-    if (GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime) {
+//    if (GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime)
+    {
         int commitpos = GetWitnessCommitmentIndex(block);
+LogPrintf("~~~~~~~~~~~~~~~5 AAA %d\n", commitpos);
         if (commitpos != -1) {
             bool malleated = false;
             uint256 hashWitness = BlockWitnessMerkleRoot(block, &malleated);
@@ -4388,7 +4393,7 @@ bool ContextualCheckBlock(const CBlock& block, CValidationState& state, CBlockIn
     if (!fHaveWitness) {
         for (size_t i = 0; i < block.vtx.size(); i++) {
             if (!block.vtx[i].wit.IsNull()) {
-                return state.DoS(100, error("%s : unexpected witness data found", __func__), REJECT_INVALID, "unexpected-witness", true);
+//                return state.DoS(100, error("%s : unexpected witness data found", __func__), REJECT_INVALID, "unexpected-witness", true);
             }
         }
     }

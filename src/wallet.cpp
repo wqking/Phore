@@ -2083,24 +2083,32 @@ bool CWallet::SelectStakeCoins(std::set<std::pair<const CWalletTx*, unsigned int
 
     for (const COutput& out : vCoins) {
         //make sure not to outrun target amount
-        if (nAmountSelected + out.tx->vout[out.i].nValue > nTargetAmount)
+        if (nAmountSelected + out.tx->vout[out.i].nValue > nTargetAmount) {
+LogPrintf("~~~~~~~~~~~~~~~1 AAA\n");
             continue;
+		}
 
         //if zerocoinspend, then use the block time
         int64_t nTxTime = out.tx->GetTxTime();
         if (out.tx->IsZerocoinSpend()) {
-            if (!out.tx->IsInMainChain())
+            if (!out.tx->IsInMainChain()) {
+LogPrintf("~~~~~~~~~~~~~~~1 BBB\n");
                 continue;
+			}
             nTxTime = mapBlockIndex.at(out.tx->hashBlock)->GetBlockTime();
         }
 
         //check for min age
-        if (GetAdjustedTime() - nTxTime < nStakeMinAge)
+        if (GetAdjustedTime() - nTxTime < nStakeMinAge) {
+LogPrintf("~~~~~~~~~~~~~~~1 CCC\n");
             continue;
+		}
 
         //check that it is matured
-        if (out.nDepth < (out.tx->IsCoinStake() ? Params().COINBASE_MATURITY() : 10))
+        if (out.nDepth < (out.tx->IsCoinStake() ? Params().COINBASE_MATURITY() : 10)) {
+LogPrintf("~~~~~~~~~~~~~~~1 DDD\n");
             continue;
+		}
 
         //add to our stake set
         setCoins.insert(make_pair(out.tx, out.i));
@@ -2897,6 +2905,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
     if (nBalance > 0 && nBalance <= nReserveBalance)
         return false;
 
+LogPrintf("~~~~~~~~~~~~~~~BBB\n");
     // presstab HyperStake - Initialize as static and don't update the set on every run of CreateCoinStake() in order to lighten resource use
     static std::set<pair<const CWalletTx*, unsigned int> > setStakeCoins;
     static int nLastStakeSetUpdate = 0;
@@ -2909,9 +2918,11 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         nLastStakeSetUpdate = GetTime();
     }
 
+LogPrintf("~~~~~~~~~~~~~~~CCC\n");
     if (setStakeCoins.empty())
         return false;
 
+LogPrintf("~~~~~~~~~~~~~~~DDD\n");
     vector<const CWalletTx*> vwtxPrev;
 
     CAmount nCredit = 0;
@@ -2963,7 +2974,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             }
             if (fDebug && GetBoolArg("-printcoinstake", false))
                 LogPrintf("CreateCoinStake : parsed kernel type=%d\n", whichType);
-            if (whichType != TX_PUBKEY && whichType != TX_PUBKEYHASH) {
+            if (whichType != TX_PUBKEY && whichType != TX_PUBKEYHASH && whichType != TX_WITNESS_V0_KEYHASH) {
                 if (fDebug && GetBoolArg("-printcoinstake", false))
                     LogPrintf("CreateCoinStake : no support for kernel type=%d\n", whichType);
                 break; // only support pay to public key and pay to address
@@ -2981,6 +2992,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
                 scriptPubKeyOut << key.GetPubKey() << OP_CHECKSIG;
             } else
                 scriptPubKeyOut = scriptPubKeyKernel;
+LogPrintf("~~~~~~~~~~~~~~~5 EEE %s\n", scriptPubKeyOut.ToString().c_str());
 
             txNew.vin.push_back(CTxIn(pcoin.first->GetHash(), pcoin.second));
             nCredit += pcoin.first->vout[pcoin.second].nValue;
@@ -3003,8 +3015,10 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         if (fKernelFound)
             break; // if kernel is found stop searching
     }
+LogPrintf("~~~~~~~~~~~~~~~EEE\n");
     if (nCredit == 0 || nCredit > nBalance - nReserveBalance)
         return false;
+LogPrintf("~~~~~~~~~~~~~~~FFF\n");
 
     // Calculate reward
     CAmount nReward;
@@ -3048,6 +3062,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
         if (!SignSignature(*this, *pcoin, txNew, nIn++, SIGHASH_ALL))
             return error("CreateCoinStake : failed to sign coinstake");
     }
+LogPrintf("~~~~~~~~~~~~~~~GGG\n");
 
     // Successfully generated coinstake
     nLastStakeSetUpdate = 0; //this will trigger stake set to repopulate next round
