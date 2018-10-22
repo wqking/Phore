@@ -4229,8 +4229,8 @@ static int GetWitnessCommitmentIndex(const CBlock& block)
     int commitpos = -1;
 LogPrintf("~~~~~~~~~~~~~~~5 BBB %d %s\n", (int)block.vtx[0].vout.size(), block.vtx[0].vout[0].scriptPubKey.ToString().c_str());
     for (size_t o = 0; o < block.vtx[0].vout.size(); o++) {
-if(block.vtx[0].vout[o].scriptPubKey.size() > 6) LogPrintf("~~~~~~~~~~~~~~~5 CCC %d %0x %0x %0x %0x %0x\n", (int)block.vtx[0].vout[o].scriptPubKey.size(), (int)block.vtx[0].vout[o].scriptPubKey[0], block.vtx[0].vout[o].scriptPubKey[1], block.vtx[0].vout[o].scriptPubKey[2], block.vtx[0].vout[o].scriptPubKey[3], block.vtx[0].vout[o].scriptPubKey[4], block.vtx[0].vout[o].scriptPubKey[5]);
-else LogPrintf("~~~~~~~~~~~~~~~5 DDD %d\n", (int)block.vtx[0].vout[o].scriptPubKey.size());
+//if(block.vtx[0].vout[o].scriptPubKey.size() > 6) LogPrintf("~~~~~~~~~~~~~~~5 CCC %d %0x %0x %0x %0x %0x\n", (int)block.vtx[0].vout[o].scriptPubKey.size(), (int)block.vtx[0].vout[o].scriptPubKey[0], block.vtx[0].vout[o].scriptPubKey[1], block.vtx[0].vout[o].scriptPubKey[2], block.vtx[0].vout[o].scriptPubKey[3], block.vtx[0].vout[o].scriptPubKey[4], block.vtx[0].vout[o].scriptPubKey[5]);
+//else LogPrintf("~~~~~~~~~~~~~~~5 DDD %d\n", (int)block.vtx[0].vout[o].scriptPubKey.size());
         if (block.vtx[0].vout[o].scriptPubKey.size() >= 38 && block.vtx[0].vout[o].scriptPubKey[0] == OP_RETURN && block.vtx[0].vout[o].scriptPubKey[1] == 0x24 && block.vtx[0].vout[o].scriptPubKey[2] == 0xaa && block.vtx[0].vout[o].scriptPubKey[3] == 0x21 && block.vtx[0].vout[o].scriptPubKey[4] == 0xa9 && block.vtx[0].vout[o].scriptPubKey[5] == 0xed) {
             commitpos = o;
         }
@@ -4242,7 +4242,7 @@ void UpdateUncommittedBlockStructures(CBlock& block, const CBlockIndex* pindexPr
 {
     int commitpos = GetWitnessCommitmentIndex(block);
     static const std::vector<unsigned char> nonce(32, 0x00);
-    if (commitpos != -1 && GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime && block.vtx[0].wit.IsEmpty()) {
+    if (commitpos != -1 /*&& GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime*/ && block.vtx[0].wit.IsEmpty()) {
         block.vtx[0].wit.vtxinwit.resize(1);
         block.vtx[0].wit.vtxinwit[0].scriptWitness.stack.resize(1);
         block.vtx[0].wit.vtxinwit[0].scriptWitness.stack[0] = nonce;
@@ -4261,7 +4261,8 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
         }
     }
     std::vector<unsigned char> ret(32, 0x00);
-    if (fHaveWitness && GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime) {
+//    if (fHaveWitness && GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime)
+    {
         if (commitpos == -1) {
             uint256 witnessroot = BlockWitnessMerkleRoot(block, NULL);
             CHash256().Write(witnessroot.begin(), 32).Write(&ret[0], 32).Finalize(witnessroot.begin());
