@@ -176,6 +176,11 @@ bool CBlock::SignBlock(const CKeyStore& keystore)
     }
     else
     {
+// from Lux coin		
+        // if we are trying to sign
+        //    a complete proof-of-stake block
+        return vtx[0].vout[0].IsEmpty() && vtx.size() > 1 && vtx[1].IsCoinStake();
+
         const CTxOut& txout = vtx[1].vout[1];
 
         if (!Solver(txout.scriptPubKey, whichType, vSolutions))
@@ -222,6 +227,13 @@ bool CBlock::CheckBlockSignature() const
 {
     if (IsProofOfWork())
         return vchBlockSig.empty();
+
+    if (IsProofOfStake()) {
+// from Lux coin		
+        // if we are trying to sign
+        //    a complete proof-of-stake block
+        return vtx[0].vout[0].IsEmpty();
+    }
 
     std::vector<valtype> vSolutions;
     txnouttype whichType;
