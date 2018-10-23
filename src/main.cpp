@@ -4167,19 +4167,15 @@ bool CheckWork(const CBlock block, CBlockIndex* const pindexPrev)
         return error("%s: incorrect proof of work at %d", __func__, pindexPrev->nHeight + 1);
 
     if (block.IsProofOfStake()) {
-        /*uint256 hashProofOfStake, proof;
-        uint256 hash = block.GetHash(); //pindexPrev->nHeight + 1 >= chainParams.SwitchPhi2Block());
-        //if (!stake->CheckProof(pindexPrev, block, hashProofOfStake)) {
-		if(! CheckProofOfStake(block, hashProofOfStake)) {
-            return error("%s: invalid proof-of-stake (block %s)\n", __func__, hash.GetHex());
+        uint256 hashProofOfStake;
+        uint256 hash = block.GetHash();
+
+        if(!CheckProofOfStake(block, hashProofOfStake)) {
+            LogPrintf("WARNING: ProcessBlock(): check proof-of-stake failed for block %s\n", hash.ToString().c_str());
+            return false;
         }
-        if (stake->GetProof(hash, proof)) {
-            if (proof != hashProofOfStake)
-                return error("%s: diverged stake %s, %s (block %s)\n", __func__,
-                             hashProofOfStake.GetHex(), proof.GetHex(), hash.GetHex());
-        } else {
-            stake->SetProof(hash, hashProofOfStake);
-        }*/
+        if(!mapProofOfStake.count(hash)) // add to mapProofOfStake
+            mapProofOfStake.insert(make_pair(hash, hashProofOfStake));
     }
     return true;
 }

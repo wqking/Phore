@@ -14,6 +14,7 @@
 #include "pubkey.h"
 #include "script/script.h"
 #include "uint256.h"
+#include "util.h"
 
 using namespace std;
 
@@ -1326,10 +1327,12 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
     vector<vector<unsigned char> > stack;
     CScript scriptPubKey;
 
+LogPrintf("~~~XXX~~~ AAA %d %d\n", witversion, (int)program.size());
     if (witversion == 0) {
         if (program.size() == 32) {
             // Version 0 segregated witness program: SHA256(CScript) inside the program, CScript + inputs in witness
             if (witness.stack.size() == 0) {
+LogPrintf("~~~XXX~~~ BBB %d\n", witness.stack.size());
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WITNESS_EMPTY);
             }
             scriptPubKey = CScript(witness.stack.back().begin(), witness.stack.back().end());
@@ -1337,19 +1340,23 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             uint256 hashScriptPubKey;
             CSHA256().Write(&scriptPubKey[0], scriptPubKey.size()).Finalize(hashScriptPubKey.begin());
             if (memcmp(hashScriptPubKey.begin(), program.data(), 32)) {
+LogPrintf("~~~XXX~~~ CCC\n");
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }
         } else if (program.size() == 20) {
             // Special case for pay-to-pubkeyhash; signature + pubkey in witness
             if (witness.stack.size() != 2) {
+LogPrintf("~~~XXX~~~ DDD %d\n", witness.stack.size());
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness
             }
             scriptPubKey << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
             stack = witness.stack;
         } else {
+LogPrintf("~~~XXX~~~ EEE\n");
             return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_WRONG_LENGTH);
         }
     } else if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
+LogPrintf("~~~XXX~~~ FFF\n");
         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
     } else {
         // Higher version witness scripts return true for future softfork compatibility
@@ -1358,19 +1365,26 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
 
     // Disallow stack item size > MAX_SCRIPT_ELEMENT_SIZE in witness stack
     for (unsigned int i = 0; i < stack.size(); i++) {
-        if (stack.at(i).size() > MAX_SCRIPT_ELEMENT_SIZE)
+        if (stack.at(i).size() > MAX_SCRIPT_ELEMENT_SIZE) {
+LogPrintf("~~~XXX~~~ GGG\n");
             return set_error(serror, SCRIPT_ERR_PUSH_SIZE);
+		}
     }
 
     if (!EvalScript(stack, scriptPubKey, flags, checker, SIGVERSION_WITNESS_V0, serror)) {
+LogPrintf("~~~XXX~~~ HHH\n");
         return false;
     }
 
     // Scripts inside witness implicitly require cleanstack behaviour
-    if (stack.size() != 1)
+    if (stack.size() != 1) {
+LogPrintf("~~~XXX~~~ KKK\n");
         return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
-    if (!CastToBool(stack.back()))
+	}
+    if (!CastToBool(stack.back())) {
+LogPrintf("~~~XXX~~~ MMM\n");
         return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
+	}
     return true;
 }
 
@@ -1378,6 +1392,7 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
 {
     static const CScriptWitness emptyWitness;
     if (witness == NULL) {
+LogPrintf("~~~XXX~~~ NNN\n");
         witness = &emptyWitness;
     }
     bool hadWitness = false;
@@ -1389,14 +1404,16 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
     }
 
     vector<vector<unsigned char> > stack, stackCopy;
-    if (!EvalScript(stack, scriptSig, flags, checker, SIGVERSION_BASE, serror))
+    if (!EvalScript(stack, scriptSig, flags, checker, SIGVERSION_BASE, serror)) {
         // serror is set
         return false;
+	}
     if (flags & SCRIPT_VERIFY_P2SH)
         stackCopy = stack;
-    if (!EvalScript(stack, scriptPubKey, flags, checker, SIGVERSION_BASE, serror))
+    if (!EvalScript(stack, scriptPubKey, flags, checker, SIGVERSION_BASE, serror)) {
         // serror is set
         return false;
+	}
     if (stack.empty())
         return set_error(serror, SCRIPT_ERR_EVAL_FALSE);
         
@@ -1459,6 +1476,7 @@ bool VerifyScript(const CScript& scriptSig, const CScript& scriptPubKey, const C
                     return set_error(serror, SCRIPT_ERR_WITNESS_MALLEATED_P2SH);
                 }
                 if (!VerifyWitnessProgram(*witness, witnessversion, witnessprogram, flags, checker, serror)) {
+LogPrintf("~~~XXX~~~ ZZZ\n");
                     return false;
                 }
                 // Bypass the cleanstack check at the end. The actual stack is obviously not clean
