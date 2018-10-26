@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2016 The Bitcoin developers
+// Copyright (c) 2012-2013 The PPCoin developers
 // Copyright (c) 2014-2015 The Dash developers
 // Copyright (c) 2015-2017 The PIVX developers
 // Copyright (c) 2017-2018 The Phore developers
@@ -4270,14 +4271,13 @@ bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationState& sta
 static int GetWitnessCommitmentIndex(const CBlock& block)
 {
     int commitpos = -1;
-LogPrintf("~~~~~~~~~~~~~~~5 BBB %d %s\n", (int)block.vtx[0].vout.size(), block.vtx[0].vout[0].scriptPubKey.ToString().c_str());
-    for (size_t o = 0; o < block.vtx[0].vout.size(); o++) {
-//if(block.vtx[0].vout[o].scriptPubKey.size() > 6) LogPrintf("~~~~~~~~~~~~~~~5 CCC %d %0x %0x %0x %0x %0x\n", (int)block.vtx[0].vout[o].scriptPubKey.size(), (int)block.vtx[0].vout[o].scriptPubKey[0], block.vtx[0].vout[o].scriptPubKey[1], block.vtx[0].vout[o].scriptPubKey[2], block.vtx[0].vout[o].scriptPubKey[3], block.vtx[0].vout[o].scriptPubKey[4], block.vtx[0].vout[o].scriptPubKey[5]);
-//else LogPrintf("~~~~~~~~~~~~~~~5 DDD %d\n", (int)block.vtx[0].vout[o].scriptPubKey.size());
-        if (block.vtx[0].vout[o].scriptPubKey.size() >= 38 && block.vtx[0].vout[o].scriptPubKey[0] == OP_RETURN && block.vtx[0].vout[o].scriptPubKey[1] == 0x24 && block.vtx[0].vout[o].scriptPubKey[2] == 0xaa && block.vtx[0].vout[o].scriptPubKey[3] == 0x21 && block.vtx[0].vout[o].scriptPubKey[4] == 0xa9 && block.vtx[0].vout[o].scriptPubKey[5] == 0xed) {
-            commitpos = o;
-        }
-    }
+    if(block.vtx.size() > 1) {
+		for (size_t o = 0; o < block.vtx[1].vout.size(); o++) {
+			if (block.vtx[1].vout[o].scriptPubKey.size() >= 38 && block.vtx[1].vout[o].scriptPubKey[0] == OP_RETURN && block.vtx[1].vout[o].scriptPubKey[1] == 0x24 && block.vtx[1].vout[o].scriptPubKey[2] == 0xaa && block.vtx[1].vout[o].scriptPubKey[3] == 0x21 && block.vtx[1].vout[o].scriptPubKey[4] == 0xa9 && block.vtx[1].vout[o].scriptPubKey[5] == 0xed) {
+				commitpos = o;
+			}
+		}
+	}
     return commitpos;
 }
 
@@ -4285,10 +4285,10 @@ void UpdateUncommittedBlockStructures(CBlock& block, const CBlockIndex* pindexPr
 {
     int commitpos = GetWitnessCommitmentIndex(block);
     static const std::vector<unsigned char> nonce(32, 0x00);
-    if (commitpos != -1 /*&& GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime*/ && block.vtx[0].wit.IsEmpty()) {
-        block.vtx[0].wit.vtxinwit.resize(1);
-        block.vtx[0].wit.vtxinwit[0].scriptWitness.stack.resize(1);
-        block.vtx[0].wit.vtxinwit[0].scriptWitness.stack[0] = nonce;
+    if (commitpos != -1 /*&& GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime*/ && block.vtx[1].wit.IsEmpty()) {
+        block.vtx[1].wit.vtxinwit.resize(1);
+        block.vtx[1].wit.vtxinwit[0].scriptWitness.stack.resize(1);
+        block.vtx[1].wit.vtxinwit[0].scriptWitness.stack[0] = nonce;
     }
 }
 
@@ -4320,8 +4320,8 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
             out.scriptPubKey[5] = 0xed;
             memcpy(&out.scriptPubKey[6], witnessroot.begin(), 32);
             commitment = std::vector<unsigned char>(out.scriptPubKey.begin(), out.scriptPubKey.end());
-            const_cast<std::vector<CTxOut>*>(&block.vtx[0].vout)->push_back(out);
-            block.vtx[0].UpdateHash();
+            const_cast<std::vector<CTxOut>*>(&block.vtx[1].vout)->push_back(out);
+            block.vtx[1].UpdateHash();
         }
     }
     UpdateUncommittedBlockStructures(block, pindexPrev);
@@ -4422,11 +4422,11 @@ LogPrintf("~~~~~~~~~~~~~~~5 AAA %d\n", commitpos);
             // The malleation check is ignored; as the transaction tree itself
             // already does not permit it, it is impossible to trigger in the
             // witness tree.
-            if (block.vtx[0].wit.vtxinwit.size() != 1 || block.vtx[0].wit.vtxinwit[0].scriptWitness.stack.size() != 1 || block.vtx[0].wit.vtxinwit[0].scriptWitness.stack[0].size() != 32) {
+            if (block.vtx[1].wit.vtxinwit.size() != 1 || block.vtx[1].wit.vtxinwit[0].scriptWitness.stack.size() != 1 || block.vtx[1].wit.vtxinwit[0].scriptWitness.stack[0].size() != 32) {
                 return state.DoS(100, error("%s : invalid witness nonce size", __func__), REJECT_INVALID, "bad-witness-nonce-size", true);
             }
-            CHash256().Write(hashWitness.begin(), 32).Write(&block.vtx[0].wit.vtxinwit[0].scriptWitness.stack[0][0], 32).Finalize(hashWitness.begin());
-            if (memcmp(hashWitness.begin(), &block.vtx[0].vout[commitpos].scriptPubKey[6], 32)) {
+            CHash256().Write(hashWitness.begin(), 32).Write(&block.vtx[1].wit.vtxinwit[0].scriptWitness.stack[0][0], 32).Finalize(hashWitness.begin());
+            if (memcmp(hashWitness.begin(), &block.vtx[1].vout[commitpos].scriptPubKey[6], 32)) {
                 return state.DoS(100, error("%s : witness merkle commitment mismatch", __func__), REJECT_INVALID, "bad-witness-merkle-match", true);
             }
             fHaveWitness = true;
@@ -6673,7 +6673,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 //       it was the one which was commented out
 int ActiveProtocol()
 {
-    if (IsSporkActive(SPORK_14_NEW_PROTOCOL_ENFORCEMENT))
+    if (IsSporkActive(SPORK_18_NEW_PROTOCOL_ENFORCEMENT_3))
         return MIN_PEER_PROTO_VERSION_AFTER_ENFORCEMENT;
     return MIN_PEER_PROTO_VERSION_BEFORE_ENFORCEMENT;
 }
