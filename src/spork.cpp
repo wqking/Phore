@@ -143,6 +143,7 @@ int64_t GetSporkValue(int nSporkID)
 // grab the spork value, and see if it's off
 bool IsSporkActive(int nSporkID)
 {
+//if(nSporkID == SPORK_17_SEGWIT_ACTIVATION) return true;
     int64_t r = GetSporkValue(nSporkID);
     if (r == -1) return false;
     return r < GetTime();

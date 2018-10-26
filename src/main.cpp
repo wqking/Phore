@@ -1556,7 +1556,7 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState& state, const CTransa
 
     // Don't accept witness transactions before the final threshold passes
     if (!GetBoolArg("-prematurewitness", false) && !tx.wit.IsNull() && !IsSporkActive(SPORK_17_SEGWIT_ACTIVATION)) {
-        return state.DoS(0, false, REJECT_NONSTANDARD, "no-witness-yet", true);
+        //return state.DoS(0, false, REJECT_NONSTANDARD, "no-witness-yet", true);
     }
 
     // Rather not work on nonstandard transactions (unless -testnet/-regtest)
@@ -4304,6 +4304,7 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
         }
     }
     std::vector<unsigned char> ret(32, 0x00);
+    if (fHaveWitness)
 //    if (fHaveWitness && GetSporkValue(SPORK_17_SEGWIT_ACTIVATION) < pindexPrev->nTime)
     {
         if (commitpos == -1) {
