@@ -6,6 +6,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "synapseswap.cpp"
+
 #if defined(HAVE_CONFIG_H)
 #include "config/phore-config.h"
 #endif
@@ -731,6 +733,10 @@ bool AppInitServers(boost::thread_group& threadGroup)
  */
 bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
+    SynapseSwap synapseSwap;
+    synapseSwap.debugTest();
+    return false;
+
 // ********************************************************* Step 1: setup
 #ifdef _MSC_VER
     // Turn off Microsoft heap dump noise
