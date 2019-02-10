@@ -7,8 +7,11 @@
 
 #include <memory>
 #include <vector>
+#include <algorithm>
 
 #include <iostream>
+
+namespace synapseswap {
 
 struct UtxoIteratorItem
 {
@@ -40,6 +43,37 @@ private:
 	int debugCounter;
 };
 
+CAmount getUnspentAmount(const CCoins & coin)
+{
+	CAmount amount = 0;
+	
+	for(const auto & txOut : coin.vout) {
+		if(! txOut.IsNull() && txOut.nValue > 0) {
+			amount += txOut.nValue;
+		}
+	}
+	
+	return amount;
+}
+
+uint256 computeHashes(const uint256 & left, const uint256 & right)
+{
+	return Hash(left.begin(), left.end(), right.begin(), right.end());
+}
+
+uint256 computeHashAmount(const uint256 & txID, const CAmount amount)
+{
+	CDataStream stream(0, 0);
+	stream << txID;
+	stream << amount;
+	return Hash(stream.begin(), stream.end());
+}
+
+uint256 computeHashCoins(const uint256 & txID, const CCoins & coins)
+{
+	return computeHashAmount(txID, getUnspentAmount(coins));
+}
+
 UtxoIterator::UtxoIterator()
 	:
 		db(GetDataDir() / "chainstate", 50 * 1024 * 1024, false, false),
@@ -69,6 +103,10 @@ UtxoIteratorItem UtxoIterator::next()
         
         iterator->Next();
         
+        if(getUnspentAmount(coins) <= 0) {
+			continue;
+		}
+        
         return UtxoIteratorItem {
 			keyPair.second,
 			coins
@@ -94,9 +132,9 @@ public:
 	uint256 computeProofRoot(const uint256 & tx, const ProofList & proof);
 
 private:
-	uint256 computeHash(const uint256 & left, const uint256 & right);
-	int firstRound(HashList & txList, const uint256 & txToProof, uint256 * proofHash);
-	void moveUp(HashList & txList);
+	uint256 getProofHash(const HashList & hashList, const int index);
+	int buildHashList(HashList & hashList, const uint256 * txToProof);
+	void moveUp(HashList & hashList);
 
 private:
 };
@@ -105,62 +143,45 @@ SynapseSwap::SynapseSwap()
 {
 }
 
-uint256 SynapseSwap::computeHash(const uint256 & left, const uint256 & right)
+
+uint256 SynapseSwap::getProofHash(const HashList & hashList, const int index)
 {
-	return Hash(left.begin(), left.end(), right.begin(), right.end());
+	if((index & 1) == 0) {
+		return (index + 1 >= (int)hashList.size() ? hashList[index] : hashList[index + 1]);
+	}
+	else {
+		return hashList[index - 1];
+	}
 }
 
-int SynapseSwap::firstRound(HashList & txList, const uint256 & txToProof, uint256 * proofHash)
+int SynapseSwap::buildHashList(HashList & hashList, const uint256 * hashToProof)
 {
 	UtxoIterator iterator;
-	int indexToProof = -1;
-	int index = 0;
 	
 	for(;;) {
-		UtxoIteratorItem leftItem = iterator.next();
-		if(! leftItem.isValid()) {
+		UtxoIteratorItem item = iterator.next();
+		if(! item.isValid()) {
 			break;
 		}
-		if(leftItem.txid == txToProof) {
-			indexToProof = index;
-		}
-		++index;
-
-		UtxoIteratorItem rightItem = iterator.next();
-		if(rightItem.isValid()) {
-			if(rightItem.txid == txToProof) {
-				indexToProof = index;
-			}
-			if(proofHash != nullptr) {
-				if(indexToProof + 1 == index) {
-					*proofHash = rightItem.txid;
-				}
-				if(indexToProof == index) {
-					*proofHash = leftItem.txid;
-				}
-			}
-
-			++index;
-			txList.push_back(computeHash(leftItem.txid, rightItem.txid));
-		}
-		else {
-			if(proofHash != nullptr) {
-				if(indexToProof + 1 == index) {
-					*proofHash = rightItem.txid;
-				}
-			}
-
-			txList.push_back(computeHash(leftItem.txid, leftItem.txid));
-			break;
+		hashList.push_back(computeHashCoins(item.txid, item.coins));
+	}
+	
+	std::sort(hashList.begin(), hashList.end());
+	
+	int indexToProof = -1;
+	if(hashToProof != nullptr) {
+		auto it = std::find(hashList.begin(), hashList.end(), *hashToProof);
+		if(it != hashList.end()) {
+			indexToProof = it - hashList.begin();
 		}
 	}
 	
 	return indexToProof;
 }
 
-void SynapseSwap::moveUp(HashList & txList)
+void SynapseSwap::moveUp(HashList & hashList)
 {
-	int count = (int)txList.size();
+	int count = (int)hashList.size();
 	int halfCount = (count + 1) / 2;
 	
 	for(int i = 0; i < halfCount; ++i) {
@@ -169,63 +190,54 @@ void SynapseSwap::moveUp(HashList & txList)
 		if(rightIndex >= count) {
 			rightIndex = leftIndex;
 		}
-		txList[i] = computeHash(txList[leftIndex], txList[rightIndex]);
+		hashList[i] = computeHashes(hashList[leftIndex], hashList[rightIndex]);
 	}
 	
-	txList.resize(halfCount);
+	hashList.resize(halfCount);
 }
 
 uint256 SynapseSwap::computeMerkleRoot()
 {
-	HashList txList;
-	firstRound(txList, uint256(), nullptr);
+	HashList hashList;
+	buildHashList(hashList, nullptr);
 	
-	while(txList.size() > 1) {
-		moveUp(txList);
+	while(hashList.size() > 1) {
+		moveUp(hashList);
 	}
 	
-	if(txList.empty()) {
+	if(hashList.empty()) {
 		return uint256();
 	}
 	
-	return txList.front();
+	return hashList.front();
 }
 
 ProofList SynapseSwap::getProof(const uint256 & tx)
 {
-	HashList txList;
+	HashList hashList;
 	uint256 proofHash;
-	int index = firstRound(txList, tx, &proofHash);
+	int index = buildHashList(hashList, &tx);
 	if(index < 0) {
 		return ProofList();
 	}
 	
 	ProofList proof;
 
-	proof.push_back({
-		(index & 1) > 0,
-		proofHash
-	});
-
 	for(;;) {
-		index >>= 1;
-		if((index & 1) == 0) {
-			proofHash = (index + 1 >= (int)txList.size() ? txList[index] : txList[index + 1]);
-		}
-		else {
-			proofHash = txList[index - 1];
-		}
+		proofHash = getProofHash(hashList, index);
 
 		proof.push_back({
 			(index & 1) > 0,
 			proofHash
 		});
 		
-		moveUp(txList);
+		moveUp(hashList);
 		
-		if(txList.size() == 1) {
+		if(hashList.size() == 1) {
 			break;
 		}
+
+		index >>= 1;
 	}
 	return proof;
 }
@@ -236,10 +248,10 @@ uint256 SynapseSwap::computeProofRoot(const uint256 & tx, const ProofList & proo
 	
 	for(const auto node : proof) {
 		if(node.left) {
-			hash = computeHash(node.hash, hash);
+			hash = computeHashes(node.hash, hash);
 		}
 		else {
-			hash = computeHash(hash, node.hash);
+			hash = computeHashes(hash, node.hash);
 		}
 	}
 	
@@ -248,23 +260,14 @@ uint256 SynapseSwap::computeProofRoot(const uint256 & tx, const ProofList & proo
 
 void SynapseSwap::debugTest()
 {
-	//HashList txList;
-	//uint256 proofHash;
-	//firstRound(txList, uint256("f21ea46ab91c0f7fa7829aaf3f96787c742f8ecfa709ba41ebf74d50a32e0000"), &proofHash);
-	//std::cout << "proofHash: " << proofHash.GetHex() << std::endl;
+	dumpUtxo();
 
-	auto hash12 = computeHash(uint256("f365fec31f803294d96ad2dde5f3e847addc69c62f89828a11c6f0d1c30c0000"), uint256("04a0f88eb2f4588a6ee970c7342b2d3e52b038d4b6bb5d4f8a49ac3e9a110000"));
-	auto hash34 = computeHash(uint256("2438cf72cbc602738daf645564b0015df2ccf3497c98d25600c6be6d001c0000"), uint256("f21ea46ab91c0f7fa7829aaf3f96787c742f8ecfa709ba41ebf74d50a32e0000"));
-	std::cout << "Hash12: " << hash12.GetHex() << std::endl;
-	std::cout << "Hash34: " << hash34.GetHex() << std::endl;
-	std::cout << "Hash1234: " << computeHash(hash12, hash34).GetHex() << std::endl;
-	
-	uint256 tx("f21ea46ab91c0f7fa7829aaf3f96787c742f8ecfa709ba41ebf74d50a32e0000");
-	ProofList proof = getProof(tx);
-	for(const auto & node : proof) {
-		std::cout << "path: " << node.hash.GetHex() << " " << (node.left ? "left" : "right") << std::endl;
-	}
-	uint256 proofRoot = computeProofRoot(tx, proof);
+	uint256 tx("a0aeae14bba0d7c6f542cd8bdde7dd01bbf5b74e98003cd89ec9a7afc4940a00");
+	auto hash = computeHashAmount(tx, 420000000);
+	ProofList proof = getProof(hash);
+	for(const auto & node : proof) std::cout << "path: " << node.hash.GetHex() << " " << (node.left ? "left" : "right") << std::endl;
+
+	uint256 proofRoot = computeProofRoot(hash, proof);
 	std::cout << "proofRoot: " << proofRoot.GetHex() << std::endl;
 
 	std::cout << "Root: " << computeMerkleRoot().GetHex() << std::endl;
@@ -280,9 +283,12 @@ void SynapseSwap::dumpUtxo()
 			break;
 		}
 		++count;
-		if(count <= 100) {
-			std::cout << item.txid.GetHex() << " " << item.coins.vout.size() << std::endl;
+		if(count <= 10) {
+			std::cout << item.txid.GetHex() << " " << getUnspentAmount(item.coins) << std::endl;
 		}
 	}
 	std::cout << "Count: " << count << std::endl;
 }
+
+
+} //namespace synapseswap

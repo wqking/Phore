@@ -733,7 +733,7 @@ bool AppInitServers(boost::thread_group& threadGroup)
  */
 bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
-    SynapseSwap synapseSwap;
+    synapseswap::SynapseSwap synapseSwap;
     synapseSwap.debugTest();
     return false;
 
