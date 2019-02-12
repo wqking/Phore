@@ -733,9 +733,6 @@ bool AppInitServers(boost::thread_group& threadGroup)
  */
 bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
-    synapseswap::SynapseSwap synapseSwap;
-    synapseSwap.debugTest();
-    return false;
 
 // ********************************************************* Step 1: setup
 #ifdef _MSC_VER
@@ -2008,6 +2005,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         threadGroup.create_thread(boost::bind(&ThreadFlushWalletDB, boost::ref(pwalletMain->strWalletFile)));
     }
 #endif
+
+    synapseswap::SynapseSwap synapseSwap(pcoinsdbview);
+    synapseSwap.debugTest();
+    return false;
 
     return !fRequestShutdown;
 }
