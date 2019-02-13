@@ -6,6 +6,7 @@
 #include "hash.h"
 #include "wallet.h"
 #include "txdb.h"
+#include "script/sign.h"
 
 #include <memory>
 #include <vector>
@@ -16,6 +17,16 @@
 extern CWallet* pwalletMain;
 
 namespace synapseswap {
+	
+constexpr int maxUtxoBlockHeight = 999999999;
+constexpr int minUtxoBlockHeight = 0;
+
+struct UtxoProofNode
+{
+	bool left;
+	uint256 hash;
+};
+using ProofList = std::vector<UtxoProofNode>;
 
 struct UtxoIteratorItem
 {
@@ -26,13 +37,6 @@ struct UtxoIteratorItem
 		return ! txid.IsNull();
 	}
 };
-
-struct UtxoProofNode
-{
-	bool left;
-	uint256 hash;
-};
-using ProofList = std::vector<UtxoProofNode>;
 
 class UtxoIterator
 {
@@ -93,23 +97,6 @@ uint256 computeHashes(const uint256 & left, const uint256 & right)
 	return Hash(left.begin(), left.end(), right.begin(), right.end());
 }
 
-uint256 computeHashTxOut(const CTxOut & out)
-{
-	CDataStream stream(0, 0);
-	stream << out.scriptPubKey;
-	stream << out.nValue;
-	return Hash(stream.begin(), stream.end());
-}
-
-uint256 checkedComputeHashTxOut(const CTxOut & out)
-{
-	if(out.IsNull()) {
-		return uint256();
-	}
-	
-	return computeHashTxOut(out);
-}
-
 UtxoIterator::UtxoIterator(CLevelDBWrapper * db)
 	:
 		db(db),
@@ -146,6 +133,10 @@ UtxoIteratorItem UtxoIterator::next()
         if(getUnspentAmount(coins) <= 0) {
 			continue;
 		}
+		
+		if(coins.nHeight < minUtxoBlockHeight || coins.nHeight > maxUtxoBlockHeight) {
+			continue;
+		}
         
         return UtxoIteratorItem {
 			keyPair.second,
@@ -173,6 +164,13 @@ struct KeyItem
 	CKey key;
 };
 
+struct UnlockItem
+{
+	CScript scriptPubKey;
+	CAmount amount;
+	CScript redeemScript;
+};
+
 class SynapseSwap
 {
 private:
@@ -182,11 +180,34 @@ public:
 	SynapseSwap(CCoinsViewDB * coinsViewDB);
 
 	void debugTest();
-	void dumpUtxo();
-	void dumpSignatures();
+
+	// Compute a merkle tree leaf hash from a CTxOut
+	uint256 computeHashTxOut(const CTxOut & out);
+
+	// Compute a merkle tree leaf hash from a CTxOut
+	// If the CTxOut is spent, an empty uint256 is returned;
+	uint256 checkedComputeHashTxOut(const CTxOut & out);
+
+	// Compute the merkle tree of all valid UTXOs
+	// A valid UTXO has coins, and the block height is within [minUtxoBlockHeight, maxUtxoBlockHeight]
 	uint256 computeMerkleRoot();
+
+	// Compute a proof path (ProofList) of a give hash.
+	// The hash can be obtained by checkedComputeHashTxOut
 	ProofList getProof(const uint256 & hash);
-	uint256 computeProofRoot(const uint256 & h, const ProofList & proof);
+
+	// Compute the merkle root from a proof path (ProofList) of a give hash.
+	// The hash can be obtained by checkedComputeHashTxOut
+	// The result can be compared to the result of `computeMerkleRoot()`
+	uint256 computeProofRoot(uint256 hash, const ProofList & proof);
+
+	// Get a list of UnlockItem. The result can be used to transfer coins from old chain to new chain.
+	// The contract on the new chain will very the UnlockItem against the merkle tree.
+	std::vector<UnlockItem> getUnlockItems();
+	
+private: // test functions
+	void debugDumpUtxo();
+	void debugDumpSignatures();
 
 private:
 	bool getUtxoCoins(const uint256 & txid, CCoins & coins) const;
@@ -195,6 +216,7 @@ private:
 	void moveUp(HashList & hashList);
 	std::vector<KeyItem> getKeys();
 	CWallet * getWallet() const;
+	SignatureData signTxOut(const int nOut, const CWalletTx* pcoin);
 
 private:
 	CLevelDBWrapper * utxoDb;
@@ -203,6 +225,23 @@ private:
 SynapseSwap::SynapseSwap(CCoinsViewDB * coinsViewDB)
 	: utxoDb(static_cast<HackCoinsViewDB *>(coinsViewDB)->getDb())
 {
+}
+
+uint256 SynapseSwap::computeHashTxOut(const CTxOut & out)
+{
+	CDataStream stream(0, 0);
+	stream << out.scriptPubKey;
+	stream << out.nValue;
+	return Hash(stream.begin(), stream.end());
+}
+
+uint256 SynapseSwap::checkedComputeHashTxOut(const CTxOut & out)
+{
+	if(out.IsNull()) {
+		return uint256();
+	}
+	
+	return computeHashTxOut(out);
 }
 
 uint256 SynapseSwap::getProofHash(const HashList & hashList, const int index)
@@ -308,10 +347,8 @@ ProofList SynapseSwap::getProof(const uint256 & hash)
 	return proof;
 }
 
-uint256 SynapseSwap::computeProofRoot(const uint256 & h, const ProofList & proof)
+uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
 {
-	uint256 hash = h;
-	
 	for(const auto node : proof) {
 		if(node.left) {
 			hash = computeHashes(node.hash, hash);
@@ -331,7 +368,7 @@ bool SynapseSwap::getUtxoCoins(const uint256 & txid, CCoins & coins) const
 
 void SynapseSwap::debugTest()
 {
-	dumpUtxo();
+	debugDumpUtxo();
 
 	uint256 tx("cc3995305ff73fe1d7faeda0ec8c9f977fe96526d7f6b4d835c783eecdb50b00");
 	CCoins coins;
@@ -355,11 +392,11 @@ void SynapseSwap::debugTest()
 
 	std::cout << "Root: " << computeMerkleRoot().GetHex() << std::endl;
 	
-	dumpSignatures();
+	debugDumpSignatures();
 	getKeys();
 }
 
-void SynapseSwap::dumpUtxo()
+void SynapseSwap::debugDumpUtxo()
 {
 	UtxoIterator iterator(utxoDb);
 	int count = 0;
@@ -376,19 +413,41 @@ void SynapseSwap::dumpUtxo()
 	std::cout << "Count: " << count << std::endl;
 }
 
-void SynapseSwap::dumpSignatures()
+void SynapseSwap::debugDumpSignatures()
 {
+	std::vector<UnlockItem> itemList = getUnlockItems();
+	for(const UnlockItem & item : itemList) {
+	}
+
+	std::cout << "unlockItemCount: " << itemList.size() << std::endl;
+}
+
+SignatureData SynapseSwap::signTxOut(const int nOut, const CWalletTx* pcoin)
+{
+	CTransaction tx;
+	tx.vin.push_back(CTxIn(pcoin->GetHash(), nOut));
+	const auto & out = pcoin->vout[nOut];
+	tx.vout.push_back(CTxOut(out.nValue, out.scriptPubKey));
+	SignatureData sigData;
+	if(!ProduceSignature(TransactionSignatureCreator(getWallet(), &tx, nOut, out.nValue, SIGHASH_ALL), out.scriptPubKey, sigData)) {
+		std::cout << "signTxOut failed " << std::endl;
+	}
+	else {
+		std::cout << "signTxOut succeeded " << std::endl;
+	}
+	return sigData;
+}
+
+std::vector<UnlockItem> SynapseSwap::getUnlockItems()
+{
+	std::vector<UnlockItem> itemList;
+
 	CWallet * wallet = getWallet();
 
-	int txCount = 0;
 	LOCK2(cs_main, wallet->cs_wallet);
 	for (map<uint256, CWalletTx>::const_iterator it = wallet->mapWallet.begin(); it != wallet->mapWallet.end(); ++it) {
 		const uint256& wtxid = it->first;
 		const CWalletTx* pcoin = &(*it).second;
-		
-		if(!utxoDb->Exists(make_pair('c', wtxid))) {
-			continue;
-		}
 		
 		CCoins coins;
 		bool hasCoins = getUtxoCoins(wtxid, coins);
@@ -397,10 +456,23 @@ void SynapseSwap::dumpSignatures()
 			continue;
 		}
 
-		++txCount;
-		std::cout << "wtxid: " << wtxid.GetHex() << std::endl;
+		int nOut = -1;
+		for(const auto & out : coins.vout) {
+			++nOut;
+			if(out.IsNull()) {
+				continue;
+			}
+			UnlockItem item;
+			item.scriptPubKey = out.scriptPubKey;
+			item.amount = out.nValue;
+			auto sigData = signTxOut(nOut, pcoin);
+			item.redeemScript = sigData.scriptSig;
+			
+			itemList.push_back(item);
+		}
 	}
-	std::cout << "txCount: " << txCount << std::endl;
+
+	return itemList;
 }
 
 std::vector<KeyItem> SynapseSwap::getKeys()
