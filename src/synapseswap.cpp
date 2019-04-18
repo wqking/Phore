@@ -11,13 +11,14 @@
 #include <memory>
 #include <vector>
 #include <algorithm>
-
+#include <fstream>
 #include <iostream>
 
 extern CWallet* pwalletMain;
 
 namespace synapseswap {
-	
+
+// Only UTXOs in the blocks between the two values are included
 constexpr int maxUtxoBlockHeight = 999999999;
 constexpr int minUtxoBlockHeight = 0;
 
@@ -166,6 +167,7 @@ struct KeyItem
 
 struct UnlockItem
 {
+	uint256 txid;
 	CScript scriptPubKey;
 	CAmount amount;
 	CScript redeemScript;
@@ -182,11 +184,11 @@ public:
 	void debugTest();
 
 	// Compute a merkle tree leaf hash from a CTxOut
-	uint256 computeHashTxOut(const CTxOut & out);
+	uint256 computeHashTxOut(const uint256 & txid, const CTxOut & out);
 
 	// Compute a merkle tree leaf hash from a CTxOut
 	// If the CTxOut is spent, an empty uint256 is returned;
-	uint256 checkedComputeHashTxOut(const CTxOut & out);
+	uint256 checkedComputeHashTxOut(const uint256 & txid, const CTxOut & out);
 
 	// Compute the merkle tree of all valid UTXOs
 	// A valid UTXO has coins, and the block height is within [minUtxoBlockHeight, maxUtxoBlockHeight]
@@ -201,9 +203,11 @@ public:
 	// The result can be compared to the result of `computeMerkleRoot()`
 	uint256 computeProofRoot(uint256 hash, const ProofList & proof);
 
-	// Get a list of UnlockItem. The result can be used to transfer coins from old chain to new chain.
-	// The contract on the new chain will very the UnlockItem against the merkle tree.
+	// Get a list of UnlockItem. The result can be used to transfer coins in current wallet from old chain to new chain.
+	// The contract on the new chain will verify the UnlockItem against the merkle tree.
 	std::vector<UnlockItem> getUnlockItems();
+	
+	void saveHashList(const std::string & fileName);
 	
 private: // test functions
 	void debugDumpUtxo();
@@ -227,21 +231,22 @@ SynapseSwap::SynapseSwap(CCoinsViewDB * coinsViewDB)
 {
 }
 
-uint256 SynapseSwap::computeHashTxOut(const CTxOut & out)
+uint256 SynapseSwap::computeHashTxOut(const uint256 & txid, const CTxOut & out)
 {
 	CDataStream stream(0, 0);
+	stream << txid;
 	stream << out.scriptPubKey;
 	stream << out.nValue;
 	return Hash(stream.begin(), stream.end());
 }
 
-uint256 SynapseSwap::checkedComputeHashTxOut(const CTxOut & out)
+uint256 SynapseSwap::checkedComputeHashTxOut(const uint256 & txid, const CTxOut & out)
 {
 	if(out.IsNull()) {
 		return uint256();
 	}
 	
-	return computeHashTxOut(out);
+	return computeHashTxOut(txid, out);
 }
 
 uint256 SynapseSwap::getProofHash(const HashList & hashList, const int index)
@@ -264,7 +269,7 @@ int SynapseSwap::buildHashList(HashList & hashList, const uint256 * hashToProof)
 			break;
 		}
 		for(const auto & out : item.coins.vout) {
-			uint256 hash = checkedComputeHashTxOut(out);
+			uint256 hash = checkedComputeHashTxOut(item.txid, out);
 			if(!hash.IsNull()) {
 				hashList.push_back(hash);
 			}
@@ -366,18 +371,30 @@ bool SynapseSwap::getUtxoCoins(const uint256 & txid, CCoins & coins) const
     return utxoDb->Read(make_pair('c', txid), coins);
 }
 
+void SynapseSwap::saveHashList(const std::string & fileName)
+{
+	HashList hashList;
+	buildHashList(hashList, nullptr);
+	
+	std::ofstream file(fileName);
+	for(const auto & hash : hashList) {
+		file << binToHex(hash.begin(), hash.size()) << std::endl;
+	}
+	file.close();
+}
+
 void SynapseSwap::debugTest()
 {
 	debugDumpUtxo();
 
-	uint256 tx("cc3995305ff73fe1d7faeda0ec8c9f977fe96526d7f6b4d835c783eecdb50b00");
+	uint256 tx("661c371db32258c14a5c58ef8547de7740d69929c62b3c4e6b02ceeabaf30100");
 	CCoins coins;
 	if(!getUtxoCoins(tx, coins)) {
 		std::cout << "Can't find coins for " << tx.GetHex() << std::endl;
 	}
 	else {
 		for(const auto & out : coins.vout) {
-			auto hash = checkedComputeHashTxOut(out);
+			auto hash = checkedComputeHashTxOut(tx, out);
 			if(hash.IsNull()) continue;
 
 			ProofList proof = getProof(hash);
@@ -463,6 +480,7 @@ std::vector<UnlockItem> SynapseSwap::getUnlockItems()
 				continue;
 			}
 			UnlockItem item;
+			item.txid = wtxid;
 			item.scriptPubKey = out.scriptPubKey;
 			item.amount = out.nValue;
 			auto sigData = signTxOut(nOut, pcoin);
