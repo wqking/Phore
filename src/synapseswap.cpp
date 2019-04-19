@@ -165,6 +165,12 @@ struct KeyItem
 	CKey key;
 };
 
+/*
+To verify an UnlockItem,
+1. Use txid, scriptPubKey and amount to calculate the leaf hash, similar how SynapseSwap::computeHashTxOut does
+2. Verify the hash in the merkle tree.
+3. Verify the signature of redeemScript, similar as SynapseSwap::signTxOut
+*/
 struct UnlockItem
 {
 	uint256 txid;
