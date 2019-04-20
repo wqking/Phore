@@ -98,6 +98,11 @@ uint256 computeHashes(const uint256 & left, const uint256 & right)
 	return Hash(left.begin(), left.end(), right.begin(), right.end());
 }
 
+std::string getHashString(const uint256 & hash)
+{
+	return hash.ToStringReverseEndian();
+}
+
 UtxoIterator::UtxoIterator(CLevelDBWrapper * db)
 	:
 		db(db),
@@ -203,6 +208,8 @@ public:
 	// Compute a proof path (ProofList) of a give hash.
 	// The hash can be obtained by checkedComputeHashTxOut
 	ProofList getProof(const uint256 & hash);
+	
+	std::string proofListToText(const ProofList & proofList);
 
 	// Compute the merkle root from a proof path (ProofList) of a give hash.
 	// The hash can be obtained by checkedComputeHashTxOut
@@ -358,6 +365,18 @@ ProofList SynapseSwap::getProof(const uint256 & hash)
 	return proof;
 }
 
+std::string SynapseSwap::proofListToText(const ProofList & proofList)
+{
+	std::string result;
+	
+	for(const auto & proof : proofList) {
+		result += (proof.left ? 'L' : 'R');
+		result += getHashString(proof.hash);
+	}
+	
+	return result;
+}
+
 uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
 {
 	for(const auto node : proof) {
@@ -389,14 +408,21 @@ void SynapseSwap::saveHashList(const std::string & fileName)
 	file.close();
 }
 
+uint256 hashFromReversedString(const std::string & text)
+{
+	uint256 hash(text);
+	std::reverse(hash.begin(), hash.end());
+	return hash;
+}
+
 void SynapseSwap::debugTest()
 {
 	debugDumpUtxo();
 
-	uint256 tx("661c371db32258c14a5c58ef8547de7740d69929c62b3c4e6b02ceeabaf30100");
+	uint256 tx = hashFromReversedString("00013a9407f671e11e2b81369d788dd8c5144f58ddcb9ee9c185274bc4f4a778");
 	CCoins coins;
 	if(!getUtxoCoins(tx, coins)) {
-		std::cout << "Can't find coins for " << tx.GetHex() << std::endl;
+		std::cout << "Can't find coins for " << getHashString(tx) << std::endl;
 	}
 	else {
 		for(const auto & out : coins.vout) {
@@ -404,16 +430,20 @@ void SynapseSwap::debugTest()
 			if(hash.IsNull()) continue;
 
 			ProofList proof = getProof(hash);
-			for(const auto & node : proof) std::cout << "path: " << node.hash.GetHex() << " " << (node.left ? "left" : "right") << std::endl;
+			if(proof.empty()) {
+				continue;
+			}
+			std::cout << "Proof text: " << proofListToText(proof) << std::endl;
+			for(const auto & node : proof) std::cout << "path: " << getHashString(node.hash) << " " << (node.left ? "left" : "right") << std::endl;
 
 			uint256 proofRoot = computeProofRoot(hash, proof);
-			std::cout << "proofRoot: " << proofRoot.GetHex() << std::endl;
+			std::cout << "proofRoot: " << getHashString(proofRoot) << std::endl;
 			
 			break;
 		}
 	}
 
-	std::cout << "Root: " << computeMerkleRoot().GetHex() << std::endl;
+	std::cout << "Root: " << getHashString(computeMerkleRoot()) << std::endl;
 	
 	debugDumpSignatures();
 	getKeys();
@@ -430,7 +460,7 @@ void SynapseSwap::debugDumpUtxo()
 		}
 		++count;
 		if(count <= 10) {
-			std::cout << item.txid.GetHex() << " " << getUnspentAmount(item.coins) << std::endl;
+			std::cout << getHashString(item.txid) << " " << getUnspentAmount(item.coins) << std::endl;
 		}
 	}
 	std::cout << "Count: " << count << std::endl;
@@ -514,7 +544,7 @@ std::vector<KeyItem> SynapseSwap::getKeys()
 				keys.push_back(item);
 /*std::cout << "item.publicKey: "
 	//<< binToHex(item.publicKey.Raw())
-	<< item.publicKey.GetHash().GetHex()
+	<< getHashString(item.publicKey.GetHash())
 	<< std::endl;*/
 			}
 		}
