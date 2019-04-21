@@ -100,7 +100,8 @@ uint256 computeHashes(const uint256 & left, const uint256 & right)
 
 std::string getHashString(const uint256 & hash)
 {
-	return hash.ToStringReverseEndian();
+	return hash.GetHex();
+	//return hash.ToStringReverseEndian();
 }
 
 UtxoIterator::UtxoIterator(CLevelDBWrapper * db)
@@ -379,12 +380,17 @@ std::string SynapseSwap::proofListToText(const ProofList & proofList)
 
 uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
 {
+	//std::cout << "===== computeProofRoot" << std::endl;
 	for(const auto node : proof) {
 		if(node.left) {
+			//std::cout << "Input L: " << node.hash.GetHex() << " R: " << hash.GetHex() << std::endl;
 			hash = computeHashes(node.hash, hash);
+			//std::cout << "L compute: " << hash.GetHex() << std::endl;
 		}
 		else {
+			//std::cout << "Input L: " << hash.GetHex() << " R: " << node.hash.GetHex() << std::endl;
 			hash = computeHashes(hash, node.hash);
+			//std::cout << "R compute: " << std::endl;
 		}
 	}
 	
@@ -418,8 +424,13 @@ uint256 hashFromReversedString(const std::string & text)
 void SynapseSwap::debugTest()
 {
 	debugDumpUtxo();
+	
+	// Hash is d8f244c159278ea8cfffcbe1c463edef33d92d11d36ac3c62efd3eb7ff3a5dbf
+	const char * b = "a";
+	std::cout << Hash(b, b + 1).GetHex() << std::endl;
 
-	uint256 tx = hashFromReversedString("00013a9407f671e11e2b81369d788dd8c5144f58ddcb9ee9c185274bc4f4a778");
+	//uint256 tx = hashFromReversedString("00013a9407f671e11e2b81369d788dd8c5144f58ddcb9ee9c185274bc4f4a778");
+	uint256 tx("78a7f4c44b2785c1e99ecbdd584f14c5d88d789d36812b1ee171f607943a0100");
 	CCoins coins;
 	if(!getUtxoCoins(tx, coins)) {
 		std::cout << "Can't find coins for " << getHashString(tx) << std::endl;
@@ -445,8 +456,10 @@ void SynapseSwap::debugTest()
 
 	std::cout << "Root: " << getHashString(computeMerkleRoot()) << std::endl;
 	
-	debugDumpSignatures();
-	getKeys();
+	std::cout << "Test: " << getHashString(computeHashes(tx, tx)) << std::endl;
+	
+	//debugDumpSignatures();
+	//getKeys();
 }
 
 void SynapseSwap::debugDumpUtxo()
