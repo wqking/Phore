@@ -7,6 +7,7 @@
 #include "wallet.h"
 #include "txdb.h"
 #include "script/sign.h"
+#include "univalue.h"
 
 #include <memory>
 #include <vector>
@@ -368,6 +369,15 @@ ProofList SynapseSwap::getProof(const uint256 & hash)
 
 std::string SynapseSwap::proofListToText(const ProofList & proofList)
 {
+	UniValue value(UniValue::VARR);
+	for(const auto & proof : proofList) {
+		UniValue item(UniValue::VOBJ);
+		item.pushKV("left", proof.left);
+		item.pushKV("hash", getHashString(proof.hash));
+		value.push_back(item);
+	}
+	return value.write();
+
 	std::string result;
 	
 	for(const auto & proof : proofList) {
@@ -380,7 +390,7 @@ std::string SynapseSwap::proofListToText(const ProofList & proofList)
 
 uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
 {
-	//std::cout << "===== computeProofRoot" << std::endl;
+	std::cout << "===== computeProofRoot hash = " << hash.GetHex() << std::endl;
 	for(const auto node : proof) {
 		if(node.left) {
 			//std::cout << "Input L: " << node.hash.GetHex() << " R: " << hash.GetHex() << std::endl;
