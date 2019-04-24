@@ -2006,10 +2006,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     }
 #endif
 
+    //return !fRequestShutdown;
+
     synapseswap::SynapseSwap synapseSwap(pcoinsdbview);
     synapseSwap.debugTest();
     synapseSwap.saveHashList("/home/wangqi/temp/utxo.txt");
     return false;
 
-    return !fRequestShutdown;
 }

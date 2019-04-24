@@ -18,6 +18,8 @@
 extern CWallet* pwalletMain;
 
 namespace synapseswap {
+	
+constexpr bool debug = true;
 
 // Only UTXOs in the blocks between the two values are included
 constexpr int maxUtxoBlockHeight = 999999999;
@@ -181,6 +183,7 @@ To verify an UnlockItem,
 struct UnlockItem
 {
 	uint256 txid;
+	int out;
 	CScript scriptPubKey;
 	CAmount amount;
 	CScript redeemScript;
@@ -377,15 +380,22 @@ std::string SynapseSwap::proofListToText(const ProofList & proofList)
 		value.push_back(item);
 	}
 	return value.write();
+}
 
-	std::string result;
-	
-	for(const auto & proof : proofList) {
-		result += (proof.left ? 'L' : 'R');
-		result += getHashString(proof.hash);
-	}
-	
-	return result;
+UniValue unlockItemToJson(const UnlockItem & item)
+{
+	UniValue json(UniValue::VOBJ);
+	json.pushKV("txid", item.txid.GetHex());
+	json.pushKV("out", item.out);
+	json.pushKV("scriptPubKey", binToHex(item.scriptPubKey));
+	json.pushKV("amount", item.amount);
+	json.pushKV("redeemScript", binToHex(item.redeemScript));
+	return json;
+}
+
+std::string unlockItemToText(const UnlockItem & item)
+{
+	return unlockItemToJson(item).write();
 }
 
 uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
@@ -424,23 +434,11 @@ void SynapseSwap::saveHashList(const std::string & fileName)
 	file.close();
 }
 
-uint256 hashFromReversedString(const std::string & text)
-{
-	uint256 hash(text);
-	std::reverse(hash.begin(), hash.end());
-	return hash;
-}
-
 void SynapseSwap::debugTest()
 {
 	debugDumpUtxo();
 	
-	// Hash is d8f244c159278ea8cfffcbe1c463edef33d92d11d36ac3c62efd3eb7ff3a5dbf
-	const char * b = "a";
-	std::cout << Hash(b, b + 1).GetHex() << std::endl;
-
-	//uint256 tx = hashFromReversedString("00013a9407f671e11e2b81369d788dd8c5144f58ddcb9ee9c185274bc4f4a778");
-	uint256 tx("78a7f4c44b2785c1e99ecbdd584f14c5d88d789d36812b1ee171f607943a0100");
+	uint256 tx("277de02a6b71ea455061ae3e9898b74cb9142750d5966268aaa5bdb317f7380b");
 	CCoins coins;
 	if(!getUtxoCoins(tx, coins)) {
 		std::cout << "Can't find coins for " << getHashString(tx) << std::endl;
@@ -454,6 +452,7 @@ void SynapseSwap::debugTest()
 			if(proof.empty()) {
 				continue;
 			}
+			std::cout << "Proof hash: " << hash.GetHex() << std::endl;
 			std::cout << "Proof text: " << proofListToText(proof) << std::endl;
 			for(const auto & node : proof) std::cout << "path: " << getHashString(node.hash) << " " << (node.left ? "left" : "right") << std::endl;
 
@@ -468,6 +467,10 @@ void SynapseSwap::debugTest()
 	
 	std::cout << "Test: " << getHashString(computeHashes(tx, tx)) << std::endl;
 	
+	std::vector<UnlockItem> itemList = getUnlockItems();
+	if(! itemList.empty()) {
+		std::cout << "UnlockItem: " << unlockItemToText(itemList.front()) << std::endl;
+	}
 	//debugDumpSignatures();
 	//getKeys();
 }
@@ -500,16 +503,20 @@ void SynapseSwap::debugDumpSignatures()
 
 SignatureData SynapseSwap::signTxOut(const int nOut, const CWalletTx* pcoin)
 {
-	CTransaction tx;
+	CMutableTransaction tx;
+	tx.nVersion = CTransaction::CURRENT_VERSION;
+	tx.nLockTime = 0;
 	tx.vin.push_back(CTxIn(pcoin->GetHash(), nOut));
 	const auto & out = pcoin->vout[nOut];
+	
 	tx.vout.push_back(CTxOut(out.nValue, out.scriptPubKey));
 	SignatureData sigData;
-	if(!ProduceSignature(TransactionSignatureCreator(getWallet(), &tx, nOut, out.nValue, SIGHASH_ALL), out.scriptPubKey, sigData)) {
-		std::cout << "signTxOut failed " << std::endl;
+	CTransaction ntx(tx);
+	if(!ProduceSignature(TransactionSignatureCreator(getWallet(), &ntx, nOut, out.nValue, SIGHASH_ALL), out.scriptPubKey, sigData)) {
+		//std::cout << "signTxOut failed " << std::endl;
 	}
 	else {
-		std::cout << "signTxOut succeeded " << std::endl;
+		//std::cout << "signTxOut succeeded " << std::endl;
 	}
 	return sigData;
 }
@@ -529,7 +536,9 @@ std::vector<UnlockItem> SynapseSwap::getUnlockItems()
 		bool hasCoins = getUtxoCoins(wtxid, coins);
 		
 		if(! hasCoins) {
-			continue;
+			if(! debug) {
+				continue;
+			}
 		}
 
 		int nOut = -1;
@@ -540,6 +549,7 @@ std::vector<UnlockItem> SynapseSwap::getUnlockItems()
 			}
 			UnlockItem item;
 			item.txid = wtxid;
+			item.out = nOut;
 			item.scriptPubKey = out.scriptPubKey;
 			item.amount = out.nValue;
 			auto sigData = signTxOut(nOut, pcoin);
