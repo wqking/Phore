@@ -19,8 +19,6 @@ extern CWallet* pwalletMain;
 
 namespace synapseswap {
 	
-constexpr bool debug = true;
-
 // Only UTXOs in the blocks between the two values are included
 constexpr int maxUtxoBlockHeight = 999999999;
 constexpr int minUtxoBlockHeight = 0;
@@ -123,8 +121,6 @@ UtxoIteratorItem UtxoIterator::next()
 		if(iterator->key().size() != 33) {
 			continue;
 		}
-
-		//++debugCounter; if(debugCounter > 4) break;
 
         CDataStream keyStream(iterator->key().data(), iterator->key().data() + iterator->key().size(), SER_DISK, CLIENT_VERSION);
         std::pair<char, uint256> keyPair;
@@ -403,14 +399,10 @@ uint256 SynapseSwap::computeProofRoot(uint256 hash, const ProofList & proof)
 	std::cout << "===== computeProofRoot hash = " << hash.GetHex() << std::endl;
 	for(const auto node : proof) {
 		if(node.left) {
-			//std::cout << "Input L: " << node.hash.GetHex() << " R: " << hash.GetHex() << std::endl;
 			hash = computeHashes(node.hash, hash);
-			//std::cout << "L compute: " << hash.GetHex() << std::endl;
 		}
 		else {
-			//std::cout << "Input L: " << hash.GetHex() << " R: " << node.hash.GetHex() << std::endl;
 			hash = computeHashes(hash, node.hash);
-			//std::cout << "R compute: " << std::endl;
 		}
 	}
 	
@@ -529,16 +521,14 @@ std::vector<UnlockItem> SynapseSwap::getUnlockItems()
 
 	LOCK2(cs_main, wallet->cs_wallet);
 	for (map<uint256, CWalletTx>::const_iterator it = wallet->mapWallet.begin(); it != wallet->mapWallet.end(); ++it) {
-		const uint256& wtxid = it->first;
+		const uint256 & wtxid = it->first;
 		const CWalletTx* pcoin = &(*it).second;
 		
 		CCoins coins;
 		bool hasCoins = getUtxoCoins(wtxid, coins);
 		
 		if(! hasCoins) {
-			if(! debug) {
-				continue;
-			}
+			continue;
 		}
 
 		int nOut = -1;
@@ -575,10 +565,6 @@ std::vector<KeyItem> SynapseSwap::getKeys()
 		if(wallet->GetPubKey(keyId, item.publicKey)) {
 			if(wallet->GetKey(keyId, item.key)) {
 				keys.push_back(item);
-/*std::cout << "item.publicKey: "
-	//<< binToHex(item.publicKey.Raw())
-	<< getHashString(item.publicKey.GetHash())
-	<< std::endl;*/
 			}
 		}
 	}
