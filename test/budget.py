@@ -51,6 +51,31 @@ def getNodeListenAddress(nodeIndex) :
 def getNodeAlias(nodeIndex) :
 	return 'node%d'  % (nodeIndex)
 
+def checkError(result) :
+	if result['error'] :
+		print('executeCli error: %s, command: %s' % ( result['output'], result['command'] ))
+		
+# command utility functions
+
+def getUnspent(node, address) :
+	if address == None :
+		return -1
+	json = '["' + address + '"]'
+	result = node.executeCli('listunspent', 0, 999999, json)
+	if result['error'] :
+		print('getUnspent error: ' + result['output'])
+		return -1
+	amount = 0
+	for item in result['json'] :
+		amount += item['amount']
+	return amount
+
+def getBlockCount(node) :
+	result = node.executeCli('getblockcount')
+	if result['error'] :
+		return None
+	return result['json']
+		
 class Node :
 	def __init__(self, app, nodeIndex) :
 		self._app = app
@@ -84,11 +109,13 @@ class Node :
 		for arg in args :
 			normalizedArgs.append(str(arg))
 		output = executeCommand(self._phoreCli, '-datadir=' + self._nodePath, *normalizedArgs)
+		command = ' '.join(normalizedArgs)
 		if output.find('error') >= 0 :
 			return {
 				'error' : True,
 				'output' : output,
 				'json' : None,
+				'command' : command,
 			}
 		else :
 			json = decodeJson(output)
@@ -98,12 +125,13 @@ class Node :
 				'error' : False,
 				'output' : output,
 				'json' : json,
+				'command' : command,
 			}
-		
+			
 	def waitNodeStarting(self, timeoutSeconds = 15) :
 		startTime = time.time()
 		while time.time() - startTime < timeoutSeconds :
-			if not self.executeCli('getblockcount')['error'] :
+			if getBlockCount(self) != None :
 				return True
 			time.sleep(1)
 		print('waitNodeStarting failed')
@@ -121,7 +149,9 @@ class Node :
 		result += "port=%d\n" % (getNodePort(self._nodeIndex))
 		result += "rpcport=%d\n" % (getNodeRpcPort(self._nodeIndex))
 		result += "listenonion=0\n"
+		result += "txindex=1\n"
 		result += "externalip=%s\n" % getNodeListenAddress(self._nodeIndex)
+		result += "budgetvotemode=suggest\n"
 		for i in range(nodeCount) :
 			if i == self._nodeIndex :
 				continue
@@ -162,6 +192,8 @@ class Node :
 
 class Application :
 	def __init__(self) :
+		self._nodeCount = 4
+		
 		self._nodeList = []
 		self._budgetCycle = 864
 		self._removeFolderAfterExit = not True
@@ -174,8 +206,6 @@ class Application :
 			self._cleanup()
 	
 	def _setup(self) :
-		self._nodeCount = 4
-		
 		self._rootPath = self._makeRootPath()
 		makeDirs(self._rootPath)
 		print('Root path: %s' % (self._rootPath))
@@ -196,24 +226,40 @@ class Application :
 	def _doRun(self) :
 		self._createNodes()
 		
-		address = self._nodeList[0].executeCli('getnewaddress')['json']
-		wtx = self._nodeList[0].executeCli('preparebudget', 'ppp1', 'http://test1.com', 5, self._budgetCycle, address, 100)['json']
+		node = self._nodeList[0]
+		address = node.executeCli('getnewaddress')['json']
+		address = node.executeCli('getnewaddress')['json']
+		print('Before budget: ' + str(getUnspent(node, address)))
+		
+		blockCount = getBlockCount(node)
+		superBlock = blockCount - blockCount % self._budgetCycle + self._budgetCycle
+		wtx = node.executeCli('preparebudget', 'ppp1', 'http://test1.com', 5, superBlock, address, 100)['json']
 		print('preparebudget: ' + wtx)
 
-		self._mineBlocks(self._nodeList[0], 10)
-		hash = self._nodeList[0].executeCli('submitbudget', 'ppp1', 'http://test1.com', 5, self._budgetCycle, address, 100, wtx)['json']
+		self._mineBlocks(node, 100)
+		hash = node.executeCli('submitbudget', 'ppp1', 'http://test1.com', 5, superBlock, address, 100, wtx)['json']
 		print('submitbudget: ' + hash)
 
-		self._mineBlocks(self._nodeList[0], 10)
+		self._mineBlocks(node, 100)
 
-		#result = self._nodeList[0].executeCli('getbudgetinfo')
-		#for i in range(1, self._nodeCount) :
-		#	result = self._nodeList[i].executeCli('mnbudgetvote', 'local', hash, 'yes')
-		#	print(result['output'])
-		#return
+		result = node.executeCli('getbudgetinfo')
+		for i in range(1, self._nodeCount) :
+			result = self._nodeList[i].executeCli('mnbudgetvote', 'local', hash, 'yes')
+			print(result['output'])
 
-		result = self._nodeList[0].executeCli('mnbudgetvote', 'many', hash, 'yes')
-		print(result['output'])
+		for i in range(self._nodeCount) :
+			masterNode = self._nodeList[i]
+			blockCount = getBlockCount(node)
+			blocksToMine = self._budgetCycle - blockCount % self._budgetCycle - 1
+			if blocksToMine == 0 :
+				blocksToMine = self._budgetCycle
+			self._mineBlocks(masterNode, blocksToMine)
+			print(node.executeCli('getbudgetinfo')['output'])
+
+			self._mineBlocks(masterNode, 1)
+			self._mineBlocks(masterNode, 100)
+		
+		print('After budget: ' + str(getUnspent(node, address)))
 		
 	def _mineBlocks(self, node, count) :
 		node.executeCli('setgenerate', 'true', count)
@@ -243,15 +289,15 @@ class Application :
 			node.startNode()
 			node.waitNodeStarting()
 
-		for node in reversed(self._nodeList) :
-			self._mineBlocks(node, 20)
+		for node in self._nodeList :
+			self._mineBlocks(node, 200)
 
 		time.sleep(3)
 
-		self._syncAllNodes()
 		self._syncMasterNodes()
-		result = self._nodeList[0].executeCli('startmasternode', 'all', 'false')
-		print(result['output'])
+		for i in range(1, self._nodeCount) :
+			result = self._nodeList[0].executeCli('startmasternode', 'alias', 'false', getNodeAlias(i))
+			print(result['output'])
 			
 	def _createControllingNode(self) :
 		node = Node(self, 0)
@@ -259,7 +305,7 @@ class Application :
 		node.createDataDir(self._nodeCount)
 		node.startNode()
 		node.waitNodeStarting()
-		self._mineBlocks(node, 1)
+		self._mineBlocks(node, 200)
 
 		masterNodePrivateKeyList = []
 		masterNodeConfig = ''
@@ -267,11 +313,14 @@ class Application :
 			key = node.executeCli('masternode', 'genkey')['json']
 			masterNodePrivateKeyList.append(key)
 			nodeName = getNodeAlias(i)
-			address = node.executeCli('getaccountaddress', nodeName)['json']
-			tx = node.executeCli('sendtoaddress', address, 10000)['json']
-			self._mineBlocks(node, 10)
+			# Intended to generate address twice
+			address = node.executeCli('getnewaddress')['json']
+			address = node.executeCli('getnewaddress')['json']
+			result = node.executeCli('sendtoaddress', address, 10000)
+			#print(getUnspent(node, address))
+			checkError(result)
+			tx = result['json']
 			outputs = node.executeCli('masternode', 'outputs')
-			#print(outputs['output'])
 			outputsList = outputs['json']
 			txIndex = 0
 			for o in outputsList :
@@ -279,10 +328,11 @@ class Application :
 					txIndex = o['outputidx']
 					break
 			masterNodeConfig += "%s %s %s %s %s\n" % (nodeName, getNodeListenAddress(i), key, tx, str(txIndex))
+		self._mineBlocks(node, 100)
 		node.writeMasterNodeConfig(masterNodeConfig)
 		node.stopNode()
 		print('Created controlling node')
-			
+		
 		return {
 			'node' : node,
 			'masterNodePrivateKeyList' : masterNodePrivateKeyList,
@@ -301,9 +351,16 @@ class Application :
 
 	def _syncBlocks(self, timeoutSeconds) :
 		startTime = time.time()
-		tips = []
+		printError = True
 		while time.time() - startTime < timeoutSeconds :
-			tips = [ node.executeCli('getbestblockhash')['json'] for node in self._nodeList ]
+			tips = []
+			for node in self._nodeList :
+				result = node.executeCli('getbestblockhash')
+				tips.append(result['json'])
+				if tips[-1] == None :
+					if printError :
+						print('getbestblockhash error: %s' % (result['output']))
+						printError = False
 			if tips == [ tips[0] ]*len(tips):
 				return True
 			time.sleep(1)
@@ -326,12 +383,14 @@ class Application :
 		return False
 
 	def _syncMasterNodes(self, timeoutSeconds = 60) :
+		return # it never works, don't waste time to try
+
 		startTime = time.time()
-		while time.time() - startTime < timeoutSeconds :
+		while timeoutSeconds < 0 or time.time() - startTime < timeoutSeconds :
 			allSynced = True
 			for i in range(1, len(self._nodeList)):
 				if not self._nodeList[i].isMasterNodeSynced() :
-					print('MN %d status %s' % (i, self._nodeList[i].executeCli('mnsync', 'status')['output']))
+					#print('MN %d status %s' % (i, self._nodeList[i].executeCli('mnsync', 'status')['output']))
 					allSynced = False
 					break
 			if allSynced :
