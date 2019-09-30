@@ -73,6 +73,7 @@ def getUnspent(node, address) :
 def getBlockCount(node) :
 	result = node.executeCli('getblockcount')
 	if result['error'] :
+		print('getBlockCount error: ' + result['output'])
 		return None
 	return result['json']
 		
@@ -172,17 +173,6 @@ class Node :
 		json = self.executeCli('mnsync', 'status')['json']
 		if json == None :
 			return False
-		'''
-			#define MASTERNODE_SYNC_INITIAL 0
-			#define MASTERNODE_SYNC_SPORKS 1
-			#define MASTERNODE_SYNC_LIST 2
-			#define MASTERNODE_SYNC_MNW 3
-			#define MASTERNODE_SYNC_BUDGET 4
-			#define MASTERNODE_SYNC_BUDGET_PROP 10
-			#define MASTERNODE_SYNC_BUDGET_FIN 11
-			#define MASTERNODE_SYNC_FAILED 998
-			#define MASTERNODE_SYNC_FINISHED 999
-		'''
 		if json['RequestedMasternodeAssets'] > 100 :
 			return True
 		return False
@@ -227,6 +217,8 @@ class Application :
 		self._createNodes()
 		
 		node = self._nodeList[0]
+		self._mineBlocks(node, 200)
+
 		address = node.executeCli('getnewaddress')['json']
 		address = node.executeCli('getnewaddress')['json']
 		print('Before budget: ' + str(getUnspent(node, address)))
@@ -253,11 +245,21 @@ class Application :
 			blocksToMine = self._budgetCycle - blockCount % self._budgetCycle - 1
 			if blocksToMine == 0 :
 				blocksToMine = self._budgetCycle
+			blocksToMine = blocksToMine - 1
 			self._mineBlocks(masterNode, blocksToMine)
-			print(node.executeCli('getbudgetinfo')['output'])
-
+			previousBlockCount = getBlockCount(masterNode)
+			if previousBlockCount == None :
+				continue
 			self._mineBlocks(masterNode, 1)
+			self._mineBlocks(masterNode, 1)
+			self._mineBlocks(masterNode, 1)
+			newBlockCount = getBlockCount(masterNode)
+			print(
+				'During super block: previousBlockCount=%d newBlockCount=%d expect=%d'
+				% (previousBlockCount, newBlockCount, previousBlockCount + 3)
+			)
 			self._mineBlocks(masterNode, 100)
+			#print(node.executeCli('getbudgetinfo')['output'])
 		
 		print('After budget: ' + str(getUnspent(node, address)))
 		

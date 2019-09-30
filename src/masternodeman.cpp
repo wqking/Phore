@@ -726,7 +726,6 @@ void CMasternodeMan::ProcessMessage(CNode* pfrom, std::string& strCommand, CData
 {
     if (fLiteMode) return; //disable all Obfuscation/Masternode related functionality
     if (!masternodeSync.IsBlockchainSynced()) return;
-LogPrint(NULL,"xxxxx 1, command=%s\n", strCommand.c_str());
 
     LOCK(cs_process_message);
 
@@ -736,7 +735,6 @@ LogPrint(NULL,"xxxxx 1, command=%s\n", strCommand.c_str());
 
         if (mapSeenMasternodeBroadcast.count(mnb.GetHash())) { //seen
             masternodeSync.AddedMasternodeList(mnb.GetHash());
-LogPrint(NULL,"xxxxx 2, command=%s\n", strCommand.c_str());
             return;
         }
         mapSeenMasternodeBroadcast.insert(make_pair(mnb.GetHash(), mnb));
@@ -746,7 +744,6 @@ LogPrint(NULL,"xxxxx 2, command=%s\n", strCommand.c_str());
             if (nDoS > 0)
                 Misbehaving(pfrom->GetId(), nDoS);
 
-LogPrint(NULL,"xxxxx 3, command=%s\n", strCommand.c_str());
             //failed
             return;
         }
@@ -941,7 +938,6 @@ LogPrint(NULL,"xxxxx 3, command=%s\n", strCommand.c_str());
             //   after that they just need to match
             if (count == -1 && pmn->pubKeyCollateralAddress == pubkey && (GetAdjustedTime() - pmn->nLastDsee > MASTERNODE_MIN_MNB_SECONDS)) {
                 if (pmn->protocolVersion > GETHEADERS_VERSION && sigTime - pmn->lastPing.sigTime < MASTERNODE_MIN_MNB_SECONDS) {
-LogPrint(NULL,"xxxxx dsee 10\n");
                     return;
                 }
                 if (pmn->nLastDsee < sigTime) { //take the newest entry
@@ -967,7 +963,6 @@ LogPrint(NULL,"xxxxx dsee 10\n");
                 }
             }
 
-LogPrint(NULL,"xxxxx dsee 11\n");
             return;
         }
 

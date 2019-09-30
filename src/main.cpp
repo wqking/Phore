@@ -5755,9 +5755,7 @@ void static ProcessGetData(CNode* pfrom)
                 }
 
                 if (!pushed && inv.type == MSG_BUDGET_FINALIZED) {
-LogPrint(NULL,"xxxxx main::ProcessGetData MSG_BUDGET_FINALIZED 1\n");
                     if (budget.mapSeenFinalizedBudgets.count(inv.hash)) {
-LogPrint(NULL,"xxxxx main::ProcessGetData MSG_BUDGET_FINALIZED 2\n");
                         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                         ss.reserve(1000);
                         ss << budget.mapSeenFinalizedBudgets[inv.hash];
@@ -5767,9 +5765,7 @@ LogPrint(NULL,"xxxxx main::ProcessGetData MSG_BUDGET_FINALIZED 2\n");
                 }
 
                 if (!pushed && inv.type == MSG_MASTERNODE_ANNOUNCE) {
-LogPrint(NULL,"xxxxx main::ProcessGetData MSG_MASTERNODE_ANNOUNCE 1\n");
                     if (mnodeman.mapSeenMasternodeBroadcast.count(inv.hash)) {
-LogPrint(NULL,"xxxxx main::ProcessGetData MSG_MASTERNODE_ANNOUNCE 2\n");
                         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                         ss.reserve(1000);
                         ss << mnodeman.mapSeenMasternodeBroadcast[inv.hash];
