@@ -471,7 +471,7 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
         rawTx.vout.push_back(out);
     }
 
-    return EncodeHexTx(rawTx, PROTOCOL_VERSION | RPCSerializationFlags());
+    return EncodeHexTx(CTransaction(rawTx), PROTOCOL_VERSION | RPCSerializationFlags());
 }
 
 UniValue decoderawtransaction(const UniValue& params, bool fHelp)
@@ -848,7 +848,7 @@ UniValue signrawtransaction(const UniValue& params, bool fHelp)
     bool fComplete = vErrors.empty();
 
     UniValue result(UniValue::VOBJ);
-    result.push_back(Pair("hex", EncodeHexTx(mergedTx, PROTOCOL_VERSION)));
+    result.push_back(Pair("hex", EncodeHexTx(CTransaction(mergedTx), PROTOCOL_VERSION)));
     result.push_back(Pair("complete", fComplete));
     if (!vErrors.empty()) {
         result.push_back(Pair("errors", vErrors));

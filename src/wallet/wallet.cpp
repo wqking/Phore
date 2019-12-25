@@ -3134,12 +3134,13 @@ bool CWallet::CreateTransaction(const vector<pair<CScript, CAmount> >& vecSend,
                 // Embed the constructed transaction data in wtxNew.
                 *static_cast<CTransaction*>(&wtxNew) = CTransaction(txNew);
 
+                const CTransaction txNewImmutable(txNew);
                 // Limit size
-                if (GetTransactionCost(txNew) >= MAX_STANDARD_TX_COST) {
+                if (GetTransactionCost(txNewImmutable) >= MAX_STANDARD_TX_COST) {
                     strFailReason = _("Transaction too large");
                     return false;
                 }
-                unsigned int nBytes = GetVirtualTransactionSize(txNew);
+                unsigned int nBytes = GetVirtualTransactionSize(txNewImmutable);
 
                 dPriority = wtxNew.ComputePriority(dPriority, nBytes);
 
@@ -3336,7 +3337,7 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, int
             txNew.vout[1].nValue = nCredit - nMinFee;
 
         // Limit size
-        unsigned int nBytes = GetTransactionCost(txNew);
+        unsigned int nBytes = GetTransactionCost(CTransaction(txNew));
         if (nBytes >= MAX_STANDARD_TX_COST)
             return error("CreateCoinStake : exceeded coinstake size limit");
 
@@ -5362,8 +5363,9 @@ bool CWallet::CreateZerocoinSpendTransaction(CAmount nValue, int nSecurityLevel,
                 txNew.vin.push_back(newTxIn);
             }
 
+            const CTransaction txNewImmutable(txNew);
             // Limit size
-            unsigned int nCost = GetTransactionCost(txNew);
+            unsigned int nCost = GetTransactionCost(txNewImmutable);
             if (nCost >= MAX_STANDARD_TX_COST) {
                 receipt.SetStatus(_("In rare cases, a spend with 7 coins exceeds our maximum allowable transaction size, please retry spend using 6 or less coins"), ZPHR_TX_TOO_LARGE);
                 return false;
@@ -5380,7 +5382,7 @@ bool CWallet::CreateZerocoinSpendTransaction(CAmount nValue, int nSecurityLevel,
             }
 
             //turn the finalized transaction into a wallet transaction
-            wtxNew = CWalletTx(this, txNew);
+            wtxNew = CWalletTx(this, txNewImmutable);
             wtxNew.fFromMe = true;
             wtxNew.fTimeReceivedIsTxTime = true;
             wtxNew.nTimeReceived = GetAdjustedTime();
@@ -5628,12 +5630,13 @@ string CWallet::MintZerocoin(CAmount nValue, CWalletTx& wtxNew, vector<CDetermin
         return strError;
     }
 
-    wtxNew = CWalletTx(this, txNew);
+    const CTransaction txNewImmutable(txNew);
+    wtxNew = CWalletTx(this, txNewImmutable);
     wtxNew.fFromMe = true;
     wtxNew.fTimeReceivedIsTxTime = true;
 
     // Limit size
-    unsigned int nCost = GetTransactionCost(txNew);
+    unsigned int nCost = GetTransactionCost(txNewImmutable);
     if (nCost >= MAX_STANDARD_TX_COST) {
         return _("Error: The transaction is larger than the maximum allowed transaction size!");
     }

@@ -555,7 +555,7 @@ void CObfuscationPool::Check()
             finalTransaction = txNew;
 
             // request signatures from clients
-            RelayFinalTransaction(sessionID, finalTransaction);
+            RelayFinalTransaction(sessionID, CTransaction(finalTransaction));
         }
     }
 
@@ -580,7 +580,7 @@ void CObfuscationPool::CheckFinalTransaction()
 {
     if (!fMasterNode) return; // check and relay final tx only on masternode
 
-    CWalletTx txNew = CWalletTx(pwalletMain, finalTransaction);
+    CWalletTx txNew = CWalletTx(pwalletMain, CTransaction(finalTransaction));
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
     {
@@ -1195,12 +1195,13 @@ void CObfuscationPool::SendObfuscationDenominate(std::vector<CTxIn>& vin, std::v
         }
     }
 
+    const CTransaction txImmutable(txCollateral);
     // store our entry for later use
     CObfuScationEntry e;
-    e.Add(vin, amount, txCollateral, vout);
+    e.Add(vin, amount, txImmutable, vout);
     entries.push_back(e);
 
-    RelayIn(entries[0].sev, entries[0].amount, txCollateral, entries[0].vout);
+    RelayIn(entries[0].sev, entries[0].amount, txImmutable, entries[0].vout);
     Check();
 }
 
@@ -1513,7 +1514,7 @@ bool CObfuscationPool::DoAutomaticDenominating(bool fDryRun)
                 return false;
             }
         } else {
-            if (!IsCollateralValid(txCollateral)) {
+            if (!IsCollateralValid(CTransaction(txCollateral))) {
                 LogPrintf("%s -- invalid collateral, recreating...\n", __func__);
                 if (!pwalletMain->CreateCollateralTransaction(txCollateral, strReason)) {
                     LogPrintf("%s -- create collateral error: %s\n", __func__, strReason);

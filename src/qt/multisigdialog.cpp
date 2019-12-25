@@ -374,7 +374,7 @@ void MultisigDialog::on_createButton_clicked()
                                      "Please continue on to sign the tx from this wallet, to access the hex to send to other owners.", fee).c_str());
 
             ui->createButtonStatus->setText(status);
-            ui->transactionHex->setText(QString::fromStdString(EncodeHexTx(multisigTx, PROTOCOL_VERSION)));
+            ui->transactionHex->setText(QString::fromStdString(EncodeHexTx(CTransaction(multisigTx), PROTOCOL_VERSION)));
 
         }
     }catch(const runtime_error& e){
@@ -567,7 +567,7 @@ void MultisigDialog::on_signButton_clicked()
  */
 QString MultisigDialog::buildMultisigTxStatusString(bool fComplete, const CMutableTransaction& tx)
 {
-    string sTxHex = EncodeHexTx(tx, PROTOCOL_VERSION);
+    string sTxHex = EncodeHexTx(CTransaction(tx), PROTOCOL_VERSION);
 
     if(fComplete){
         ui->commitButton->setEnabled(true);
@@ -758,7 +758,7 @@ void MultisigDialog::commitMultisigTx()
     CMutableTransaction tx(multisigTx);
     try{
 #ifdef ENABLE_WALLET
-        CWalletTx wtx(pwalletMain, tx);
+        CWalletTx wtx(pwalletMain, CTransaction(tx));
         CReserveKey keyChange(pwalletMain);
         if (!pwalletMain->CommitTransaction(wtx, keyChange))
             throw runtime_error(string("Transaction rejected - Failed to commit"));
