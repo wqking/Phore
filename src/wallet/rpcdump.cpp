@@ -567,6 +567,7 @@ UniValue dumpwallet(const UniValue& params, bool fHelp)
     reply.push_back(Pair("filename", filepath.string()));
     return reply;
 }
+
 UniValue dumpallprivatekeys(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
@@ -733,3 +734,81 @@ UniValue bip38decrypt(const UniValue& params, bool fHelp)
 
     return result;
 }
+
+UniValue makeairdropfile(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 3)
+        throw runtime_error(
+            "makeairdropfile \"bsc_address\" airdrop_number \"filename\"\n"
+            "\nSign all Phore addresses in JSON format to be used for AidDrop.\n"
+           "\nArguments:\n"
+            "1. \"bsc_address\"    (string, required) The BSC address\n"
+            "2. airdrop_number    (integer, required) The AirDrop number\n"
+            "3. \"filename\"    (string, required) The filename\n"
+            "\nExamples:\n" +
+            HelpExampleCli("makeairdropfile", "\"myBSCaddress\" 1 \"test\"") + HelpExampleRpc("makeairdropfile", "\"myBSCaddress\" 1 \"test\""));
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    EnsureWalletIsUnlocked();
+
+    ofstream file;
+    file.open(params[2].get_str().c_str());
+    if (!file.is_open())
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open airdop dump file");
+        
+    const std::string bscAddress = params[0].get_str();
+    const std::string airDropNumber = params[1].get_str();
+    const std::string indent = "  ";
+
+    std::map<CKeyID, int64_t> mapKeyBirth;
+    std::set<CKeyID> setKeyPool;
+    pwalletMain->GetKeyBirthTimes(mapKeyBirth);
+    pwalletMain->GetAllReserveKeys(setKeyPool);
+
+    // sort time/key pairs
+    std::vector<std::pair<int64_t, CKeyID> > vKeyBirth;
+    for (std::map<CKeyID, int64_t>::const_iterator it = mapKeyBirth.begin(); it != mapKeyBirth.end(); it++) {
+        vKeyBirth.push_back(std::make_pair(it->second, it->first));
+    }
+    mapKeyBirth.clear();
+    std::sort(vKeyBirth.begin(), vKeyBirth.end());
+    
+    file << "{\n";
+    file << indent << strprintf("\"airdrop\": %s,\n", airDropNumber); 
+    file << indent << strprintf("\"bscAddress\": \"%s\",\n", bscAddress);
+    file << indent << "\"phrProofs\": [\n";
+    
+    bool needComma = false;
+
+    for (std::vector<std::pair<int64_t, CKeyID> >::const_iterator it = vKeyBirth.begin(); it != vKeyBirth.end(); it++) {
+        const CKeyID& keyid = it->second;
+        std::string strAddr = EncodeDestination(CTxDestination(keyid));
+
+        CKey key;
+        if (pwalletMain->GetKey(keyid, key)) {
+            CDataStream ss(SER_GETHASH, 0);
+            ss << strAddr;
+
+            std::vector<unsigned char> vchSig;
+            if(key.SignCompact(Hash(ss.begin(), ss.end()), vchSig)) {
+                const std::string signature = EncodeBase64(&vchSig[0], vchSig.size());
+                if(needComma) {
+                    file << ",";
+                }
+                needComma = true;
+                file << "\n";
+                file << indent << indent << "{\n";
+                file << indent << indent << indent << strprintf("\"phrAddress\": \"%s\",\n", strAddr);
+                file << indent << indent << indent << strprintf("\"signature\": \"%s\"\n", signature);
+                file << indent << indent << "}";
+            }
+        }
+    }
+    file << "\n";
+    file << indent << "]\n";
+    file << "}\n";
+    file.close();
+    return NullUniValue;
+}
+
