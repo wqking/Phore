@@ -17,6 +17,7 @@
 #include "wallet/wallet.h"
 
 #include <fstream>
+#include <regex>
 #include <secp256k1.h>
 #include <stdint.h>
 
@@ -752,13 +753,20 @@ UniValue makeairdropfile(const UniValue& params, bool fHelp)
 
     EnsureWalletIsUnlocked();
 
+    const std::string bscAddress = params[0].get_str();
+    const std::string airDropNumber = params[1].get_str();
+    
+    std::regex re("^0x[0-9a-fA-F]{40}$");
+    std::smatch matchResult;
+    if(! std::regex_match(bscAddress, matchResult, re)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid BSC address format.");
+    }
+
     ofstream file;
     file.open(params[2].get_str().c_str());
     if (!file.is_open())
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open airdop dump file");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot open airdop JSON file");
         
-    const std::string bscAddress = params[0].get_str();
-    const std::string airDropNumber = params[1].get_str();
     const std::string indent = "  ";
 
     std::map<CKeyID, int64_t> mapKeyBirth;
